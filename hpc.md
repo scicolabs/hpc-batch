@@ -32,8 +32,9 @@ This lab will take you through:
 - Using Alces ClusterWare including Gridware to install and manage scientific computing applications across your Alces Flight cluster
 - Configuring your CfnCluster cluster and updating existing clusters
 - Auto scaling the cluster based on the length of the job queue
-- Running sample application(s) on the cluster
-- Using spot instances in your cluster
+- Running sample application(s) on the cluster (landsat-util to do very simple satellite imagery processing tasks)
+- Use data from the AWS Open Data program (Landsat-8) in your cluster, and persist processed data to your own private S3 bucket
+- Experiment with using spot instances in your cluster
 
 
 ## Sign in to the AWS Management Console
@@ -43,7 +44,7 @@ Welcome to this self-paced lab! The first step is for you to sign in to Amazon W
 
 1. In this lab we are going to use your existing AWS account. Prior to the lab you will have been given an IAM user with a username and password, and a URL to the AWS IAM console login screen. Browse to that URL and use the username and password credentials to login into the AWS console.  
   
-  ![AWS Console Sign-in](images/aws-signin.png)
+  ![AWS Console Sign-in](images/aws-iam-signin.png)
 
 2. **AWS Region** – all the work you do today will be in a single AWS region. Please check with the lab instructor which AWS region you should use.
 
@@ -52,14 +53,14 @@ Welcome to this self-paced lab! The first step is for you to sign in to Amazon W
 1. Browse to the EC2 console
 2. In the left hand navigation menu, under the ‘Network & Security’ section, click **Key Pairs**
 3. Click the **Create Key Pair** button
-4. Give your Key Pair a unique name, e.g. **hpc-lab**
+4. Give your Key Pair a unique name, e.g. **jupyter-lab**
 5. Click the **Create** button
 
 The EC2 console will now download the private key for your newly created key pair. Before we can use the private key we’ll need to update the permissions on it. To do this type:
 
-    chmod 0400 hpc-lab.pem
+    chmod 0400 jupyter-lab.pem
 
-Don’t lose this and store is in a safe place! It effectively authenticates you when using AWS programmatically. You don’t want someone else impersonating you or using your credentials. We’ll be using this private key later in the lab.
+Don’t lose this and store it in a safe place! It effectively authenticates you when using AWS programmatically. You don’t want someone else impersonating you or using your credentials. We’ll be using this private key later in the lab.
 
 # Module 1 – Alces Flight
 
@@ -70,42 +71,51 @@ In this module we’ll use [Alces Flight](http://alces-flight.com/) to create yo
 
 ## Creating our first Alces Flight cluster
 
-Alces provides a CloudFormation template which enables most of the features we’re interested in by default. This template is publicly available (and open source),
-https://s3-ap-southeast-2.amazonaws.com/scico-labs/templates/demo_vpc.json
+Alces provides a CloudFormation template which enables most of the features we’re interested in by default. This template is publicly available (and open source):
+
+[https://s3-ap-southeast-2.amazonaws.com/scico-labs/templates/demo_vpc.json](https://s3-ap-southeast-2.amazonaws.com/scico-labs/templates/demo_vpc.json)
 
 We’re going to use this template to create our first cluster. To do this:
 
 1. Click on the URL above, and download the template to your local computer. This will be saved as a file demo_vpc.json
 2. In your web browser, go to the AWS CloudFormation console
-3. Click the Create Stack button
-4. In the “Choose a template” section, select Upload a template to Amazon S3 and click Choose File
+3. Click the **Create Stack** button
+4. In the “Choose a template” section, select **Upload** a template to Amazon S3 and click **Choose File**
 5. Browse to the location where you downloaded the template (remember the file will be called “demo_vpc.json”), and select that file
-6. Click the Next button
+6. Click the **Next** button
 
 The next screen gives you an opportunity to change the behaviour of your template by using CloudFormation parameters. We’re going to make a few minor changes here.
 
-1. In the Stack name field enter a unique name for your HPC cluster. E.g. use your first name, something like “adrian-first-cluster”. Then, in the Parameters section, for:
-2. the ComputeAutoscaling field, enter 1
-3. the InitialNodes field, enter 2
-4. the KeyPair field, select your keypair you created earlier
+1. In the **Stack name** field enter a unique name for your HPC cluster. E.g. use your first name, something like “adrian-first-cluster”. Then, in the Parameters section, for:
+2. the **ComputeAutoscaling** field, enter 1
+3. the **InitialNodes** field, enter 2
+4. the **KeyPair** field, select your keypair you created earlier
 
-Then, click the Next button
+We'll leave all the other fields untouched. Then, click the **Next** button
 
 The next screen allows us to tag our HPC cluster. We can use whatever metadata we like here, in the form of key-value pairs. I’d suggest giving your cluster a meaningful name so you can find it later (e.g. when you have multiple clusters or other AWS resources running).
 
 To do this:
-1. In the Key field, enter Name
-2. In the Value field, enter a descriptive name for your cluster, e.g. “Adrian First Cluster”
+
+1. In the **Key** field, enter Name
+2. In the **Value** field, enter a descriptive name for your cluster, e.g. “My first AWS First Cluster”
 
 You should see something like this:
 
-1. Once you’ve done this, click the Next button.
-2. You have an opportunity to review your CloudFormation configuration. Once you’re happy with it, select I acknowledge that AWS CloudFormation might create IAM resources.
-3. Click the Create button.
+
+
+1. Once you’ve done this, click the **Next** button.
+2. You have an opportunity to review your CloudFormation configuration. Once you’re happy with it, select **I acknowledge that AWS CloudFormation might create IAM resources**.
+3. Click the **Create** button.
 
 AWS CloudFormation will now go off and do a lot of work for us. If you browse back to the CloudFormation console, you should see a new stack being created. This is your first HPC cluster. Select the stack and inspect the Events tab in the pane on the bottom half of the screen. CloudFormation is doing all this work for us so we don’t have to. 
-Alces Flight builds a cluster quite quickly. In 5-10 minutes we’ll have a fully functional HPC cluster up and running. What’s more with the configuration we’ve created our cluster will start with two nodes and be able to gracefully and transparently scale up and down based on the amount of work the cluster has to do. Alces Flight uses custom Amazon CloudWatch metrics to look at the length of the queue(s) for the scheduler to determine how much work is waiting to be done, and scales the cluster for us automatically.
+
+Alces Flight builds a cluster quite quickly. In 5-10 minutes we’ll have a fully functional HPC cluster up and running. What’s more with the configuration we’ve created our cluster will start with two nodes and be able to gracefully and transparently scale up and down based on the amount of work the cluster has to do. 
+
+Alces Flight uses custom Amazon CloudWatch metrics to look at the length of the queue(s) for the scheduler to determine how much work is waiting to be done, and scales the cluster for us automatically.
+
 Logging into your cluster
+
 Alces Flight provides a “Login node” which we can connect to. In this section, we’ll SSH to the login node and start inspecting our cluster, including the software we have at our fingertips.
 From the CloudFormation console, browse to the Outputs tab in pane at the bottom of the screen. You should see two pieces of information; the AccessIP and the Username for our login node.
 Using your SSH client of choice, connect to the head node. E.g. on OS X or Linux, type:
